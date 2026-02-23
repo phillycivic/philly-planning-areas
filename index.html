@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Philadelphia Planning Area Lookup</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    #map {
+      height: 100%;
+      width: 100%;
+    }
+
+    /* Floating UI panel */
+    #control-panel {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 1000;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+      padding: 14px 16px;
+      width: 320px;
+      max-width: calc(100vw - 32px);
+    }
+
+    #control-panel h1 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1a1a1a;
+      margin-bottom: 10px;
+      line-height: 1.3;
+    }
+
+    #search-row {
+      display: flex;
+      gap: 6px;
+    }
+
+    #address-input {
+      flex: 1;
+      padding: 8px 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    #address-input:focus { border-color: #0059b3; }
+
+    #find-btn {
+      padding: 8px 14px;
+      background: #0059b3;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+
+    #find-btn:hover { background: #004494; }
+    #find-btn:disabled { background: #6699cc; cursor: default; }
+
+    /* Result panel */
+    #result-panel {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 5px;
+      font-size: 13px;
+      line-height: 1.5;
+      display: none;
+    }
+
+    #result-panel.found {
+      background: #e8f4e8;
+      border-left: 4px solid #2e7d32;
+      color: #1b5e20;
+    }
+
+    #result-panel.nearest {
+      background: #fff8e1;
+      border-left: 4px solid #f9a825;
+      color: #5c3d00;
+    }
+
+    #result-panel.error {
+      background: #fdecea;
+      border-left: 4px solid #c62828;
+      color: #7f0000;
+    }
+
+    #result-panel strong { display: block; font-weight: 700; margin-bottom: 2px; }
+
+    /* Legend */
+    #legend {
+      position: absolute;
+      bottom: 28px;
+      right: 10px;
+      z-index: 1000;
+      background: rgba(255,255,255,0.92);
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      padding: 10px 14px;
+      font-size: 12px;
+      max-height: 60vh;
+      overflow-y: auto;
+    }
+
+    #legend h3 {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #555;
+      margin-bottom: 6px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+      cursor: pointer;
+      color: #222;
+    }
+
+    .legend-swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      flex-shrink: 0;
+      border: 1px solid rgba(0,0,0,0.2);
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- Search + result floating card -->
+<div id="control-panel">
+  <h1>Philadelphia Planning Area Lookup</h1>
+  <div id="search-row">
+    <input
+      id="address-input"
+      type="text"
+      placeholder="e.g. Broad and Market, or 9900 Bustleton Ave"
+      autocomplete="off"
+    />
+    <button id="find-btn">Find</button>
+  </div>
+  <div id="result-panel"></div>
+</div>
+
+<!-- Legend -->
+<div id="legend">
+  <h3>Planning Areas</h3>
+  <div id="legend-items"></div>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Turf.js -->
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+
+<script>
+// ── 12 distinct colors for the 12 planning areas ──────────────────────────
+const PALETTE = [
+  '#e6194b', '#3cb44b', '#4363d8', '#f58231',
+  '#911eb4', '#42d4f4', '#f032e6', '#bfef45',
+  '#fabed4', '#469990', '#dcbeff', '#9a6324'
+];
+
+// ── Initialise map ─────────────────────────────────────────────────────────
+const map = L.map('map', {
+  center: [39.9526, -75.1652],
+  zoom: 11,
+  zoomControl: true
+});
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | Geocoding by <a href="https://geocoding.geo.census.gov/">US Census Bureau</a>'
+}).addTo(map);
+
+// ── State ──────────────────────────────────────────────────────────────────
+let geojsonData = null;
+let layerMap = {};       // name → Leaflet layer
+let colorMap = {};       // name → hex color
+let activeLayer = null;  // currently highlighted layer
+let marker = null;
+
+const resultPanel = document.getElementById('result-panel');
+const addressInput = document.getElementById('address-input');
+const findBtn = document.getElementById('find-btn');
+const legendItems = document.getElementById('legend-items');
+
+// ── Load GeoJSON ───────────────────────────────────────────────────────────
+fetch('./planning_areas.geojson')
+  .then(r => {
+    if (!r.ok) throw new Error('Failed to load planning_areas.geojson');
+    return r.json();
+  })
+  .then(data => {
+    geojsonData = data;
+    buildPlanningLayer(data);
+  })
+  .catch(err => {
+    showResult('error', 'Could not load planning areas data. ' + err.message);
+  });
+
+function buildPlanningLayer(data) {
+  data.features.forEach((feature, i) => {
+    const name = feature.properties.name;
+    const color = PALETTE[i % PALETTE.length];
+    colorMap[name] = color;
+
+    const layer = L.geoJSON(feature, {
+      style: defaultStyle(color),
+    });
+
+    layer.bindTooltip(name, { sticky: true, opacity: 0.9 });
+
+    layer.on('click', () => {
+      highlightLayer(name);
+      showResult('found', `<strong>Planning Area</strong>${name}`, null, name);
+    });
+
+    layer.addTo(map);
+    layerMap[name] = layer;
+
+    // Legend entry
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.innerHTML = `<span class="legend-swatch" style="background:${color}"></span>${name}`;
+    item.addEventListener('click', () => {
+      highlightLayer(name);
+      map.fitBounds(layer.getBounds(), { padding: [40, 40] });
+      showResult('found', `<strong>Planning Area</strong>${name}`, null, name);
+    });
+    legendItems.appendChild(item);
+  });
+}
+
+// ── Layer styles ───────────────────────────────────────────────────────────
+function defaultStyle(color) {
+  return {
+    color: color,
+    weight: 1.5,
+    opacity: 0.7,
+    fillColor: color,
+    fillOpacity: 0.25,
+  };
+}
+
+function highlightStyle(color) {
+  return {
+    color: color,
+    weight: 3,
+    opacity: 1,
+    fillColor: color,
+    fillOpacity: 0.45,
+  };
+}
+
+function highlightLayer(name) {
+  // Reset previous
+  if (activeLayer) {
+    const prevColor = colorMap[activeLayer];
+    layerMap[activeLayer].setStyle(defaultStyle(prevColor));
+  }
+  activeLayer = name;
+  const color = colorMap[name];
+  layerMap[name].setStyle(highlightStyle(color));
+  layerMap[name].bringToFront();
+}
+
+function resetHighlight() {
+  if (activeLayer) {
+    const prevColor = colorMap[activeLayer];
+    layerMap[activeLayer].setStyle(defaultStyle(prevColor));
+    activeLayer = null;
+  }
+}
+
+// ── Result panel helper ────────────────────────────────────────────────────
+function showResult(type, html, address, areaName) {
+  resultPanel.style.display = 'block';
+  resultPanel.className = type;
+
+  let content = '';
+  if (address) {
+    content += `<strong>Found</strong>${address}<br/>`;
+  }
+  content += html;
+  resultPanel.innerHTML = content;
+}
+
+function hideResult() {
+  resultPanel.style.display = 'none';
+  resultPanel.innerHTML = '';
+}
+
+// ── Geocoding (US Census Bureau) ───────────────────────────────────────────
+async function geocode(query) {
+  const address = /philadelphia|phila\b/i.test(query)
+    ? query
+    : query + ', Philadelphia, PA';
+
+  const url = 'https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?' +
+    new URLSearchParams({
+      address,
+      benchmark: 'Public_AR_Current',
+      format: 'json',
+    });
+
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error('Census geocoder request failed (' + resp.status + ')');
+
+  const data = await resp.json();
+  const matches = data?.result?.addressMatches;
+  if (!matches || !matches.length) {
+    throw new Error('No results found. Try a full street address (e.g. "1234 Market St, Philadelphia, PA").');
+  }
+
+  const { x: lon, y: lat } = matches[0].coordinates;
+  const display_name = matches[0].matchedAddress;
+  return { lat, lon, display_name };
+}
+
+// ── Point-in-polygon / nearest ─────────────────────────────────────────────
+function findPlanningArea(lat, lon) {
+  if (!geojsonData) return null;
+
+  const pt = turf.point([lon, lat]);
+
+  // Check each feature
+  for (const feature of geojsonData.features) {
+    if (turf.booleanPointInPolygon(pt, feature)) {
+      return { match: 'inside', name: feature.properties.name };
+    }
+  }
+
+  // Fall back to nearest centroid
+  const centroids = turf.featureCollection(
+    geojsonData.features.map(f =>
+      turf.centroid(f, { properties: { name: f.properties.name } })
+    )
+  );
+  const nearest = turf.nearestPoint(pt, centroids);
+  return { match: 'nearest', name: nearest.properties.name };
+}
+
+// ── Drop / move marker ─────────────────────────────────────────────────────
+function placeMarker(lat, lon, label) {
+  if (marker) {
+    marker.setLatLng([lat, lon]);
+  } else {
+    marker = L.marker([lat, lon]).addTo(map);
+  }
+  marker.bindPopup(label).openPopup();
+}
+
+// ── Main search handler ────────────────────────────────────────────────────
+async function doSearch() {
+  const query = addressInput.value.trim();
+  if (!query) return;
+
+  findBtn.disabled = true;
+  findBtn.textContent = '…';
+  hideResult();
+  resetHighlight();
+
+  try {
+    const { lat, lon, display_name } = await geocode(query);
+    const result = findPlanningArea(lat, lon);
+
+    placeMarker(lat, lon, display_name);
+    map.setView([lat, lon], 14);
+
+    // Shorten display_name for readability
+    const shortAddress = display_name.split(',').slice(0, 3).join(',');
+
+    if (!result) {
+      showResult('error', 'Planning area data not yet loaded.', shortAddress);
+    } else if (result.match === 'inside') {
+      highlightLayer(result.name);
+      showResult(
+        'found',
+        `<strong>Planning Area</strong>${result.name}`,
+        shortAddress
+      );
+    } else {
+      highlightLayer(result.name);
+      showResult(
+        'nearest',
+        `<strong>Outside all planning areas</strong>Nearest area: ${result.name}`,
+        shortAddress
+      );
+    }
+  } catch (err) {
+    showResult('error', err.message);
+  } finally {
+    findBtn.disabled = false;
+    findBtn.textContent = 'Find';
+  }
+}
+
+// ── Event listeners ────────────────────────────────────────────────────────
+findBtn.addEventListener('click', doSearch);
+addressInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') doSearch();
+});
+</script>
+</body>
+</html>
