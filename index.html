@@ -179,6 +179,9 @@
 <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
 
 <script>
+// ── Config ─────────────────────────────────────────────────────────────────
+const API_BASE = '';  // set PHILLY_API_BASE in env to override (e.g. for local dev)
+
 // ── 12 distinct colors for the 12 planning areas ──────────────────────────
 const PALETTE = [
   '#e6194b', '#3cb44b', '#4363d8', '#f58231',
@@ -316,21 +319,12 @@ function hideResult() {
   resultPanel.innerHTML = '';
 }
 
-// ── Geocoding (US Census Bureau) ───────────────────────────────────────────
+// ── Geocoding ──────────────────────────────────────────────────────────────
 async function geocode(query) {
-  const address = /philadelphia|phila\b/i.test(query)
-    ? query
-    : query + ', Philadelphia, PA';
-
-  const url = 'https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?' +
-    new URLSearchParams({
-      address,
-      benchmark: 'Public_AR_Current',
-      format: 'json',
-    });
+  const url = `${API_BASE}/api/geocode?` + new URLSearchParams({ q: query });
 
   const resp = await fetch(url);
-  if (!resp.ok) throw new Error('Census geocoder request failed (' + resp.status + ')');
+  if (!resp.ok) throw new Error('Geocoder request failed (' + resp.status + ')');
 
   const data = await resp.json();
   const matches = data?.result?.addressMatches;
