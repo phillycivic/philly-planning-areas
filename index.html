@@ -234,7 +234,6 @@ const map = L.map('map', {
   minZoom: 10,
   maxBounds: PHILLY_BOUNDS,
   maxBoundsViscosity: 1.0,
-  zoomControl: true
 });
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -256,11 +255,6 @@ const clearBtn = document.getElementById('clear-btn');
 const legendItems = document.getElementById('legend-items');
 const legendEl = document.getElementById('legend');
 const legendToggle = document.getElementById('legend-toggle');
-
-document.getElementById('legend-heading').addEventListener('click', () => {
-  const collapsed = legendEl.classList.toggle('collapsed');
-  legendToggle.textContent = collapsed ? 'show' : 'hide';
-});
 
 // ── Load GeoJSON ───────────────────────────────────────────────────────────
 fetch('./planning_areas.geojson')
@@ -296,7 +290,6 @@ function buildPlanningLayer(data) {
     layer.addTo(map);
     layerMap[name] = layer;
 
-    // Legend entry
     const item = document.createElement('div');
     item.className = 'legend-item';
     item.innerHTML = `<span class="legend-swatch" style="background:${color}"></span>${name}`;
@@ -331,7 +324,6 @@ function highlightStyle(color) {
 }
 
 function highlightLayer(name) {
-  // Reset previous
   if (activeLayer) {
     const prevColor = colorMap[activeLayer];
     layerMap[activeLayer].setStyle(defaultStyle(prevColor));
@@ -392,14 +384,12 @@ function findPlanningArea(lat, lon) {
 
   const pt = turf.point([lon, lat]);
 
-  // Check each feature
   for (const feature of geojsonData.features) {
     if (turf.booleanPointInPolygon(pt, feature)) {
       return { match: 'inside', name: feature.properties.name };
     }
   }
 
-  // Fall back to nearest centroid
   const centroids = turf.featureCollection(
     geojsonData.features.map(f =>
       turf.centroid(f, { properties: { name: f.properties.name } })
@@ -437,25 +427,20 @@ async function doSearch() {
     placeMarker(lat, lon, displayName, result?.name);
     map.setView([lat, lon], 14);
 
-    // Shorten displayName for readability
+    const params = new URLSearchParams({ q: query, lat: lat.toFixed(6), lng: lon.toFixed(6) });
+    history.replaceState(null, '', '?' + params);
+
     const shortAddress = displayName.split(',').slice(0, 3).join(',');
 
     if (!result) {
       showResult('error', 'Planning area data not yet loaded.', shortAddress);
-    } else if (result.match === 'inside') {
-      highlightLayer(result.name);
-      showResult(
-        'found',
-        `<strong>Planning Area</strong>${result.name}`,
-        shortAddress
-      );
     } else {
       highlightLayer(result.name);
-      showResult(
-        'nearest',
-        `<strong>Outside all planning areas</strong>Nearest area: ${result.name}`,
-        shortAddress
-      );
+      if (result.match === 'inside') {
+        showResult('found', `<strong>Planning Area</strong>${result.name}`, shortAddress);
+      } else {
+        showResult('nearest', `<strong>Outside all planning areas</strong>Nearest area: ${result.name}`, shortAddress);
+      }
     }
   } catch (err) {
     showResult('error', err.message);
@@ -474,6 +459,7 @@ function clearAll() {
     marker.remove();
     marker = null;
   }
+  history.replaceState(null, '', location.pathname);
 }
 
 // ── Event listeners ────────────────────────────────────────────────────────
@@ -482,6 +468,17 @@ clearBtn.addEventListener('click', clearAll);
 addressInput.addEventListener('keydown', e => {
   if (e.key === 'Enter') doSearch();
 });
+document.getElementById('legend-heading').addEventListener('click', () => {
+  const collapsed = legendEl.classList.toggle('collapsed');
+  legendToggle.textContent = collapsed ? 'show' : 'hide';
+});
+
+// ── Restore from URL ────────────────────────────────────────────────────────
+const initParams = new URLSearchParams(location.search);
+if (initParams.has('q')) {
+  addressInput.value = initParams.get('q');
+  doSearch();
+}
 </script>
 </body>
 </html>
