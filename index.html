@@ -127,7 +127,26 @@
       text-transform: uppercase;
       letter-spacing: 0.05em;
       color: #555;
-      margin-bottom: 6px;
+      margin-bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    #legend-toggle {
+      font-size: 10px;
+      color: #888;
+    }
+
+    #legend-items {
+      margin-top: 6px;
+    }
+
+    #legend.collapsed #legend-items {
+      display: none;
     }
 
     .legend-item {
@@ -168,8 +187,8 @@
 </div>
 
 <!-- Legend -->
-<div id="legend">
-  <h3>Planning Areas</h3>
+<div id="legend" class="collapsed">
+  <h3 id="legend-heading">Planning Areas <span id="legend-toggle">show</span></h3>
   <div id="legend-items"></div>
 </div>
 
@@ -190,9 +209,17 @@ const PALETTE = [
 ];
 
 // ── Initialise map ─────────────────────────────────────────────────────────
+const PHILLY_BOUNDS = L.latLngBounds(
+  [39.867, -75.280],  // SW
+  [40.138, -74.956]   // NE
+);
+
 const map = L.map('map', {
   center: [39.9526, -75.1652],
   zoom: 11,
+  minZoom: 10,
+  maxBounds: PHILLY_BOUNDS,
+  maxBoundsViscosity: 1.0,
   zoomControl: true
 });
 
@@ -212,6 +239,13 @@ const resultPanel = document.getElementById('result-panel');
 const addressInput = document.getElementById('address-input');
 const findBtn = document.getElementById('find-btn');
 const legendItems = document.getElementById('legend-items');
+const legendEl = document.getElementById('legend');
+const legendToggle = document.getElementById('legend-toggle');
+
+document.getElementById('legend-heading').addEventListener('click', () => {
+  const collapsed = legendEl.classList.toggle('collapsed');
+  legendToggle.textContent = collapsed ? 'show' : 'hide';
+});
 
 // ── Load GeoJSON ───────────────────────────────────────────────────────────
 fetch('./planning_areas.geojson')
@@ -241,7 +275,7 @@ function buildPlanningLayer(data) {
 
     layer.on('click', () => {
       highlightLayer(name);
-      showResult('found', `<strong>Planning Area</strong>${name}`, null, name);
+      showResult('found', `<strong>Planning Area</strong>${name}`);
     });
 
     layer.addTo(map);
@@ -254,7 +288,7 @@ function buildPlanningLayer(data) {
     item.addEventListener('click', () => {
       highlightLayer(name);
       map.fitBounds(layer.getBounds(), { padding: [40, 40] });
-      showResult('found', `<strong>Planning Area</strong>${name}`, null, name);
+      showResult('found', `<strong>Planning Area</strong>${name}`);
     });
     legendItems.appendChild(item);
   });
@@ -263,7 +297,7 @@ function buildPlanningLayer(data) {
 // ── Layer styles ───────────────────────────────────────────────────────────
 function defaultStyle(color) {
   return {
-    color: color,
+    color,
     weight: 1.5,
     opacity: 0.7,
     fillColor: color,
@@ -273,7 +307,7 @@ function defaultStyle(color) {
 
 function highlightStyle(color) {
   return {
-    color: color,
+    color,
     weight: 3,
     opacity: 1,
     fillColor: color,
@@ -302,7 +336,7 @@ function resetHighlight() {
 }
 
 // ── Result panel helper ────────────────────────────────────────────────────
-function showResult(type, html, address, areaName) {
+function showResult(type, html, address) {
   resultPanel.style.display = 'block';
   resultPanel.className = type;
 
@@ -333,8 +367,8 @@ async function geocode(query) {
   }
 
   const { x: lon, y: lat } = matches[0].coordinates;
-  const display_name = matches[0].matchedAddress;
-  return { lat, lon, display_name };
+  const displayName = matches[0].matchedAddress;
+  return { lat, lon, displayName };
 }
 
 // ── Point-in-polygon / nearest ─────────────────────────────────────────────
@@ -382,14 +416,14 @@ async function doSearch() {
   resetHighlight();
 
   try {
-    const { lat, lon, display_name } = await geocode(query);
+    const { lat, lon, displayName } = await geocode(query);
     const result = findPlanningArea(lat, lon);
 
-    placeMarker(lat, lon, display_name, result?.name);
+    placeMarker(lat, lon, displayName, result?.name);
     map.setView([lat, lon], 14);
 
-    // Shorten display_name for readability
-    const shortAddress = display_name.split(',').slice(0, 3).join(',');
+    // Shorten displayName for readability
+    const shortAddress = displayName.split(',').slice(0, 3).join(',');
 
     if (!result) {
       showResult('error', 'Planning area data not yet loaded.', shortAddress);
