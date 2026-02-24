@@ -171,6 +171,17 @@
       color: #222;
     }
 
+    .area-label {
+      background: none;
+      border: none;
+      box-shadow: none;
+      font-size: 11px;
+      font-weight: 700;
+      color: #333;
+      text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff;
+      white-space: nowrap;
+    }
+
     .legend-swatch {
       width: 14px;
       height: 14px;
@@ -219,12 +230,12 @@ const API_BASE = '';  // set PHILLY_API_BASE in env to override (e.g. for local 
 const PALETTE = [
   '#e6194b', '#3cb44b', '#4363d8', '#f58231',
   '#911eb4', '#42d4f4', '#f032e6', '#bfef45',
-  '#fabed4', '#469990', '#dcbeff', '#9a6324'
+  '#8b0000', '#469990', '#2c1a5e', '#9a6324'
 ];
 
 // ── Initialise map ─────────────────────────────────────────────────────────
 const PHILLY_BOUNDS = L.latLngBounds(
-  [39.867, -75.280],  // SW
+  [39.867, -75.360],  // SW
   [40.138, -74.956]   // NE
 );
 
@@ -280,7 +291,12 @@ function buildPlanningLayer(data) {
       style: defaultStyle(color),
     });
 
-    layer.bindTooltip(name, { sticky: true, opacity: 0.9 });
+    const center = turf.centroid(feature);
+    const [cLon, cLat] = center.geometry.coordinates;
+    L.tooltip({ permanent: true, direction: 'center', className: 'area-label' })
+      .setLatLng([cLat, cLon])
+      .setContent(name)
+      .addTo(map);
 
     layer.on('click', () => {
       highlightLayer(name);
@@ -309,7 +325,7 @@ function defaultStyle(color) {
     weight: 1.5,
     opacity: 0.7,
     fillColor: color,
-    fillOpacity: 0.25,
+    fillOpacity: 0.32,
   };
 }
 
