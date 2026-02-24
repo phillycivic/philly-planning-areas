@@ -76,6 +76,19 @@
     #find-btn:hover { background: #004494; }
     #find-btn:disabled { background: #6699cc; cursor: default; }
 
+    #clear-btn {
+      padding: 8px 10px;
+      background: none;
+      color: #888;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    #clear-btn:hover { color: #333; border-color: #999; }
+
     /* Result panel */
     #result-panel {
       margin-top: 10px;
@@ -182,6 +195,7 @@
       autocomplete="off"
     />
     <button id="find-btn">Find</button>
+    <button id="clear-btn">✕</button>
   </div>
   <div id="result-panel"></div>
 </div>
@@ -238,6 +252,7 @@ let marker = null;
 const resultPanel = document.getElementById('result-panel');
 const addressInput = document.getElementById('address-input');
 const findBtn = document.getElementById('find-btn');
+const clearBtn = document.getElementById('clear-btn');
 const legendItems = document.getElementById('legend-items');
 const legendEl = document.getElementById('legend');
 const legendToggle = document.getElementById('legend-toggle');
@@ -450,8 +465,20 @@ async function doSearch() {
   }
 }
 
+// ── Clear ──────────────────────────────────────────────────────────────────
+function clearAll() {
+  addressInput.value = '';
+  hideResult();
+  resetHighlight();
+  if (marker) {
+    marker.remove();
+    marker = null;
+  }
+}
+
 // ── Event listeners ────────────────────────────────────────────────────────
 findBtn.addEventListener('click', doSearch);
+clearBtn.addEventListener('click', clearAll);
 addressInput.addEventListener('keydown', e => {
   if (e.key === 'Enter') doSearch();
 });
